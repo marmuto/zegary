@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "mrcn.desktop-clock",
+  "name": "Desktop Clock",
+  "version": "1.0.0",
+  "author": "mrcn",
+  "description": "Persistent LCD digital clock in the top-left corner of the desktop.",
+  "kinds": [
+    "panel"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Panel.qml"
+  }
+}
