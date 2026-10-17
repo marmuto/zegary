@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Services.UPower
 import qs.Commons
@@ -50,14 +51,50 @@ Item {
   readonly property string timeText: pad(clock.date.getHours()) + ":"
     + pad(clock.date.getMinutes())
 
+  // ---- Temperature state -------------------------------------------------
+  // e.g. "7°C" — DSEG7 supports digits and the degree sign.
+  property string temperatureText: ""
+
+  readonly property string temperatureDisplay: root.temperatureText
+
+  function lcdGhost(text) {
+    return String(text || "").replace(/[0-9]/g, "8")
+  }
+
+  readonly property string temperatureGhost: root.lcdGhost(root.temperatureDisplay)
+
+  function updateTemperature(raw) {
+    var value = String(raw || "").trim().replace(/^\+/, "")
+    if (value !== "") temperatureText = value
+  }
+
   // ---- Sizing ------------------------------------------------------------
   readonly property int clockFontSize: 54
   readonly property int batteryFontSize: 36
+  readonly property int temperatureFontSize: 24
   readonly property int columnSpacing: Style.space(10)
 
   SystemClock {
     id: clock
     precision: SystemClock.Minutes
+  }
+
+  // Current temperature for the configured location (see
+  // omarchy-weather-location). Refreshes every 15 minutes; a failed fetch
+  // keeps the last known value so the line under the battery never goes empty.
+  Process {
+    id: tempProc
+    running: true
+    command: ["bash", "-c", "q=$(omarchy-weather-location | tr -d '\\n' | jq -sRr @uri); curl -fsS --max-time 5 \"https://wttr.in/${q}?format=%t\" | tr -d '\\n'"]
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateTemperature(text) }
+  }
+
+  Timer {
+    id: tempTimer
+    interval: 15 * 60 * 1000
+    running: true
+    repeat: true
+    onTriggered: if (!tempProc.running) tempProc.running = true
   }
 
   PanelWindow {
@@ -69,10 +106,12 @@ Item {
       top: root.barClearance + root.gap
       left: root.gap
     }
-    implicitWidth: Math.max(clockGhost.implicitWidth, batteryGhost.implicitWidth)
+    implicitWidth: Math.max(clockGhost.implicitWidth, batteryGhost.implicitWidth, tempGhost.implicitWidth)
     implicitHeight: clockGhost.implicitHeight
       + (root.hasBattery
         ? root.columnSpacing + batteryGhost.implicitHeight : 0)
+      + (root.temperatureDisplay !== ""
+        ? root.columnSpacing + tempGhost.implicitHeight : 0)
     color: "transparent"
     surfaceFormat.opaque: false
 
@@ -137,6 +176,34 @@ Item {
           font.family: "DSEG7 Classic"
           font.pixelSize: root.batteryFontSize
           color: root.batteryColor
+        }
+      }
+
+      // ---- Temperature (NN°C LOC) ----------------------------------------
+      Item {
+        visible: root.temperatureDisplay !== ""
+        width: tempGhost.implicitWidth
+        height: tempGhost.implicitHeight
+
+        Text {
+          id: tempGhost
+          anchors.fill: parent
+          horizontalAlignment: Text.AlignLeft
+          verticalAlignment: Text.AlignVCenter
+          text: root.temperatureGhost
+          font.family: "DSEG7 Classic"
+          font.pixelSize: root.temperatureFontSize
+          color: Qt.rgba(root.lcdColor.r, root.lcdColor.g, root.lcdColor.b, 0.12)
+        }
+
+        Text {
+          anchors.fill: parent
+          horizontalAlignment: Text.AlignLeft
+          verticalAlignment: Text.AlignVCenter
+          text: root.temperatureDisplay
+          font.family: "DSEG7 Classic"
+          font.pixelSize: root.temperatureFontSize
+          color: root.lcdColor
         }
       }
     }
